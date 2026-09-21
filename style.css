@@ -1,0 +1,94 @@
+/* STREAMING_CHUNK:Configuring custom monochrome CSS rules... */
+/* Strict global sharp edges & monochrome baseline */
+*, *::before, *::after {
+    border-radius: 0 !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+    background-color: #000000;
+    color: #f4f4f5;
+}
+
+/* Cropper customization for monochrome aesthetic */
+.cropper-view-box {
+    outline: 2px solid #ffffff !important;
+    outline-color: #ffffff !important;
+}
+.cropper-line, .cropper-point {
+    background-color: #ffffff !important;
+}
+.cropper-modal {
+    opacity: 0.85 !important;
+    background-color: #000000 !important;
+}
+.cropper-container {
+    max-height: 440px !important;
+    background-color: #111111 !important;
+}
+
+/* Custom monochrome scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #111111;
+}
+::-webkit-scrollbar-thumb {
+    background: #444444;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #777777;
+}
+
+/* Print sheet shadow & container styling */
+.print-sheet-wrapper {
+    background-color: #ffffff;
+    box-shadow: 0 0 30px rgba(255, 255, 255, 0.08);
+    transition: all 0.2s ease-in-out;
+}
+
+/* Direct Browser Print CSS Overrides */
+@media print {
+    body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    header, .no-print, #step-1-panel, #step-2-panel, #step-1-preview, .print-controls-bar {
+        display: none !important;
+    }
+    main {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+    .lg\:col-span-7 {
+        width: 100% !important;
+    }
+    #step-2-preview {
+        display: block !important;
+        background: #ffffff !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+    }
+    #print-sheet-container {
+        box-shadow: none !important;
+        border: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        margin: 0 auto !important;
+        page-break-inside: avoid;
+    }
+    #sheet-canvas {
+        width: 100% !important;
+        height: auto !important;
+        display: block !important;
+    }
+}

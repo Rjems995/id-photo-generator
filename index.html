@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo ID Print Sheet Generator</title>
+    
+    <!-- External Dependencies -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Custom Application CSS -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="min-h-screen flex flex-col selection:bg-neutral-800 selection:text-white">
+
+    <!-- Header Banner -->
+    <header class="bg-black border-b border-neutral-800 sticky top-0 z-30 no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-white text-black p-2 font-black text-xl flex items-center justify-center w-10 h-10 border border-white">
+                    <i class="fa-solid fa-id-card text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-white text-base tracking-wider uppercase">SNAPPRINT ID</h1>
+                    <p class="text-[11px] text-neutral-400 font-mono tracking-tight">Passport & ID Photo Sheet Studio</p>
+                </div>
+            </div>
+
+            <!-- Workflow Nav Indicator -->
+            <div class="hidden md:flex items-center gap-2 text-xs font-mono">
+                <span id="step-nav-1" class="px-3 py-1.5 bg-white text-black font-bold border border-white flex items-center gap-2">
+                    <span class="w-4 h-4 bg-black text-white flex items-center justify-center text-[10px]">1</span> CROP & ADJUST
+                </span>
+                <i class="fa-solid fa-chevron-right text-neutral-600 text-[10px]"></i>
+                <span id="step-nav-2" class="px-3 py-1.5 bg-neutral-900 text-neutral-500 border border-neutral-800 flex items-center gap-2">
+                    <span class="w-4 h-4 bg-neutral-800 text-neutral-400 flex items-center justify-center text-[10px]">2</span> SHEET LAYOUT
+                </span>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button id="reset-btn" class="text-xs font-mono font-bold uppercase tracking-wider text-neutral-300 hover:text-white px-3 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 transition">
+                    <i class="fa-solid fa-rotate-left mr-1.5"></i> RESET ALL
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        
+        <!-- Toast Notification Area -->
+        <div id="toast-message" class="hidden mb-4 p-3 bg-neutral-900 border border-neutral-700 text-neutral-200 text-xs font-mono flex items-center justify-between">
+            <span id="toast-text" class="flex items-center gap-2">
+                <i class="fa-solid fa-circle-info text-white"></i> Message
+            </span>
+            <button id="toast-close-btn" class="text-neutral-400 hover:text-white px-2">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            <!-- LEFT CONTROL PANEL -->
+            <div class="lg:col-span-5 space-y-6 no-print">
+
+                <!-- STEP 1 CONTROLS -->
+                <div id="step-1-panel" class="bg-neutral-950 p-6 border border-neutral-800 space-y-6">
+                    <div class="flex items-center justify-between border-b border-neutral-800 pb-3">
+                        <h2 class="font-bold text-white text-xs font-mono uppercase tracking-widest flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-neutral-400"></i> STEP 1: PHOTO & SIZE CONFIG
+                        </h2>
+                    </div>
+
+                    <!-- Upload Input Area -->
+                    <div>
+                        <label class="block text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-400 mb-2">
+                            1. Select or Drop Image
+                        </label>
+                        <div id="drop-zone" class="border-2 border-dashed border-neutral-700 hover:border-white p-6 text-center cursor-pointer transition bg-neutral-900 hover:bg-neutral-800/80">
+                            <input type="file" id="image-input" accept="image/jpeg,image/jpg,image/png,image/webp" class="hidden">
+                            <i class="fa-solid fa-cloud-arrow-up text-3xl text-neutral-300 mb-2"></i>
+                            <p class="text-xs font-bold text-white uppercase tracking-wider">Click to upload or drag photo</p>
+                            <p class="text-[11px] text-neutral-400 font-mono mt-1">Supports JPEG, PNG, WEBP (Max 25MB)</p>
+                        </div>
+                    </div>
+
+                    <!-- Preset Photo Sizes Selector -->
+                    <div>
+                        <label class="block text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-400 mb-2">
+                            2. ID Photo Size Preset
+                        </label>
+                        <select id="preset-select" class="w-full bg-neutral-900 text-white border border-neutral-700 p-2.5 text-xs font-mono font-medium focus:border-white focus:outline-none cursor-pointer">
+                            <option value="2x2">2 x 2 Inches (Standard Passport / US / PH)</option>
+                            <option value="1x1">1 x 1 Inch (Standard Square ID)</option>
+                            <option value="1.5x2">1.5 x 2 Inches (Standard Portrait ID)</option>
+                            <option value="2x3">2 x 3 Inches (Large Wallet / Portrait)</option>
+                            <option value="35x45">35 x 45 mm (EU / UK / Schengen / Canada)</option>
+                            <option value="30x40">30 x 40 mm (Mini ID / Asia Standard)</option>
+                            <option value="custom">Custom Dimensions...</option>
+                        </select>
+                    </div>
+
+                    <!-- Custom Dimension Controls -->
+                    <div id="custom-dim-container" class="hidden grid grid-cols-3 gap-2 p-3 bg-neutral-900 border border-neutral-800">
+                        <div>
+                            <label class="text-[10px] font-mono font-bold uppercase text-neutral-400 block mb-1">Width</label>
+                            <input type="number" id="custom-width" value="2" min="0.1" max="20" step="0.1" class="w-full bg-black border border-neutral-700 text-white p-2 text-xs font-mono outline-none focus:border-white">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-mono font-bold uppercase text-neutral-400 block mb-1">Height</label>
+                            <input type="number" id="custom-height" value="2" min="0.1" max="20" step="0.1" class="w-full bg-black border border-neutral-700 text-white p-2 text-xs font-mono outline-none focus:border-white">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-mono font-bold uppercase text-neutral-400 block mb-1">Unit</label>
+                            <select id="custom-unit" class="w-full bg-black border border-neutral-700 text-white p-2 text-xs font-mono outline-none focus:border-white">
+                                <option value="in">Inch</option>
+                                <option value="mm">mm</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Background Fill Preview Selector -->
+                    <div>
+                        <label class="block text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-400 mb-2">
+                            3. Background Fill Color
+                        </label>
+                        <div class="flex items-center gap-2">
+                            <button type="button" class="bg-color-btn w-8 h-8 border-2 border-white bg-white" data-color="#ffffff" title="Pure White"></button>
+                            <button type="button" class="bg-color-btn w-8 h-8 border border-neutral-700 bg-[#f4f4f5]" data-color="#f4f4f5" title="Off-White"></button>
+                            <button type="button" class="bg-color-btn w-8 h-8 border border-neutral-700 bg-[#e4e4e7]" data-color="#e4e4e7" title="Light Gray"></button>
+                            <button type="button" class="bg-color-btn w-8 h-8 border border-neutral-700 bg-[#888888]" data-color="#888888" title="Medium Gray"></button>
+                            <button type="button" class="bg-color-btn w-8 h-8 border border-neutral-700 bg-[#000000]" data-color="#000000" title="Pure Black"></button>
+                            <div class="relative w-8 h-8 border border-neutral-700 bg-neutral-900 flex items-center justify-center">
+                                <input type="color" id="custom-bg-color" value="#ffffff" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer">
+                                <i class="fa-solid fa-palette text-neutral-400 text-xs pointer-events-none"></i>
+                            </div>
+                        </div>
+                        <p class="text-[10px] font-mono text-neutral-500 mt-1.5">Fills background area behind cropped photo.</p>
+                    </div>
+
+                    <!-- Cropper Controls -->
+                    <div id="cropper-tools" class="opacity-40 pointer-events-none transition-all space-y-2 pt-3 border-t border-neutral-800">
+                        <label class="block text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-400">
+                            4. Image Rotation & Flip Controls
+                        </label>
+                        <div class="grid grid-cols-4 gap-2">
+                            <button id="btn-rotate-left" type="button" class="p-2 text-xs font-mono font-bold border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-neutral-200"><i class="fa-solid fa-rotate-left mr-1"></i> -90°</button>
+                            <button id="btn-rotate-right" type="button" class="p-2 text-xs font-mono font-bold border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-neutral-200"><i class="fa-solid fa-rotate-right mr-1"></i> +90°</button>
+                            <button id="btn-flip-h" type="button" class="p-2 text-xs font-mono font-bold border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-neutral-200"><i class="fa-solid fa-arrows-left-right mr-1"></i> Flip</button>
+                            <button id="btn-reset-crop" type="button" class="p-2 text-xs font-mono font-bold border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-neutral-200"><i class="fa-solid fa-arrow-rotate-left mr-1"></i> Reset</button>
+                        </div>
+                    </div>
+
+                    <!-- Step Switcher Button -->
+                    <button id="go-to-step-2" type="button" class="w-full py-3 bg-white hover:bg-neutral-200 text-black font-extrabold uppercase tracking-wider text-xs border border-white transition flex items-center justify-center gap-2">
+                        GENERATE SHEET LAYOUT <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                </div>
+
+                <!-- STEP 2 CONTROLS -->
+                <div id="step-2-panel" class="hidden bg-neutral-950 p-6 border border-neutral-800 space-y-6">
+                    <div class="flex items-center justify-between border-b border-neutral-800 pb-3">
+                        <h2 class="font-bold text-white text-xs font-mono uppercase tracking-widest flex items-center gap-2">
+                            <i class="fa-solid fa-print text-neutral-400"></i> STEP 2: PRINT SHEET LAYOUT
+                        </h2>
+                        <button id="back-to-step-1" type="button" class="text-[11px] font-mono text-neutral-400 hover:text-white uppercase font-bold underline">
+                            <i class="fa-solid fa-arrow-left"></i> Edit Crop
+                        </button>
+                    </div>
+
+                    <!-- Paper Size Selection -->
+                    <div>
+                        <label class="block text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-400 mb-2">Paper Sheet Size</label>
+                        <select id="paper-size-select" class="w-full bg-neutral-900 text-white border border-neutral-700 p-2.5 text-xs font-mono font-medium focus:border-white focus:outline-none cursor-pointer">
+                            <option value="4x6">4 x 6 Inches (Standard Photo Paper / 10x15 cm)</option>
+                            <option value="5x7">5 x 7 Inches (Medium Photo Paper)</option>
+                            <option value="a4">A4 Paper (210 x 297 mm / 8.27 x 11.69 in)</option>
+                            <option value="letter">US Letter (8.5 x 11 Inches)</option>
+                        </select>
+                    </div>
+
+                    <!-- Multi-Size Quantities & Mixers -->
+                    <div class="space-y-3 bg-neutral-900 p-4 border border-neutral-800">
+                        <div class="flex items-center justify-between border-b border-neutral-800 pb-2">
+                            <label class="text-xs font-mono font-bold uppercase tracking-wider text-white">Photo Quantities</label>
+                            <span class="text-[10px] font-mono text-neutral-400 uppercase">Auto-Grid System</span>
+                        </div>
+                        
+                        <!-- Primary Crop Quantity -->
+                        <div class="flex items-center justify-between bg-black p-2.5 border border-neutral-800">
+                            <span class="text-xs font-mono text-neutral-200" id="primary-qty-label">Primary Crop:</span>
+                            <div class="flex items-center gap-2">
+                                <button type="button" class="qty-btn w-7 h-7 bg-neutral-800 hover:bg-neutral-700 text-white font-mono font-bold border border-neutral-600 flex items-center justify-center" data-target="primary" data-change="-1">-</button>
+                                <span id="qty-primary-val" class="w-6 text-center text-xs font-mono font-bold text-white">6</span>
+                                <button type="button" class="qty-btn w-7 h-7 bg-neutral-800 hover:bg-neutral-700 text-white font-mono font-bold border border-neutral-600 flex items-center justify-center" data-target="primary" data-change="1">+</button>
+                            </div>
+                        </div>
+
+                        <!-- Secondary Mixers -->
+                        <div class="space-y-2 pt-2 border-t border-neutral-800">
+                            <p class="text-[10px] font-mono text-neutral-400 uppercase font-bold tracking-wider">Mix with additional sizes on page:</p>
+                            
+                            <!-- 1x1 Inch Mix Row -->
+                            <div id="mixer-1x1-row" class="flex items-center justify-between bg-black p-2 border border-neutral-800">
+                                <span class="text-xs font-mono text-neutral-300">Add 1x1 Inch Photos:</span>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" class="qty-btn w-6 h-6 bg-neutral-800 hover:bg-neutral-700 text-white font-mono text-xs border border-neutral-600" data-target="1x1" data-change="-1">-</button>
+                                    <span id="qty-1x1-val" class="w-5 text-center text-xs font-mono font-bold text-white">0</span>
+                                    <button type="button" class="qty-btn w-6 h-6 bg-neutral-800 hover:bg-neutral-700 text-white font-mono text-xs border border-neutral-600" data-target="1x1" data-change="1">+</button>
+                                </div>
+                            </div>
+
+                            <!-- 2x2 Inch Mix Row -->
+                            <div id="mixer-2x2-row" class="flex items-center justify-between bg-black p-2 border border-neutral-800">
+                                <span class="text-xs font-mono text-neutral-300">Add 2x2 Inch Photos:</span>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" class="qty-btn w-6 h-6 bg-neutral-800 hover:bg-neutral-700 text-white font-mono text-xs border border-neutral-600" data-target="2x2" data-change="-1">-</button>
+                                    <span id="qty-2x2-val" class="w-5 text-center text-xs font-mono font-bold text-white">0</span>
+                                    <button type="button" class="qty-btn w-6 h-6 bg-neutral-800 hover:bg-neutral-700 text-white font-mono text-xs border border-neutral-600" data-target="2x2" data-change="1">+</button>
+                                </div>
+                            </div>
+
+                            <!-- 1.5x2 Inch Mix Row -->
+                            <div id="mixer-1.5x2-row" class="flex items-center justify-between bg-black p-2 border border-neutral-800">
+                                <span class="text-xs font-mono text-neutral-300">Add 1.5x2 Inch Photos:</span>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" class="qty-btn w-6 h-6 bg-neutral-800 hover:bg-neutral-700 text-white font-mono text-xs border border-neutral-600" data-target="1.5x2" data-change="-1">-</button>
+                                    <span id="qty-1.5x2-val" class="w-5 text-center text-xs font-mono font-bold text-white">0</span>
+                                    <button type="button" class="qty-btn w-6 h-6 bg-neutral-800 hover:bg-neutral-700 text-white font-mono text-xs border border-neutral-600" data-target="1.5x2" data-change="1">+</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button id="btn-fill-max" type="button" class="w-full text-xs py-2 bg-neutral-800 hover:bg-neutral-700 text-white font-mono font-bold uppercase tracking-wider border border-neutral-600 transition">
+                            <i class="fa-solid fa-border-all mr-1.5"></i> Auto-Fill Maximum Capacity
+                        </button>
+                    </div>
+
+                    <!-- Cutting Lines Options -->
+                    <div class="space-y-3 bg-neutral-900 p-4 border border-neutral-800">
+                        <label class="block text-xs font-mono font-bold text-white uppercase tracking-wider">Cutting Line Guides</label>
+                        <select id="line-style-select" class="w-full bg-black text-white border border-neutral-700 p-2 text-xs font-mono outline-none">
+                            <option value="solid">Thin Solid Black Border Line</option>
+                            <option value="dashed">Thin Dashed Line</option>
+                            <option value="none">No Cutting Lines</option>
+                        </select>
+                    </div>
+
+                    <!-- Output Actions -->
+                    <div class="pt-2 space-y-2">
+                        <button id="btn-direct-print" type="button" class="w-full py-3 bg-white hover:bg-neutral-200 text-black font-extrabold uppercase tracking-wider text-xs border border-white shadow-sm transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-print text-sm"></i> PRINT NOW (SYSTEM DIALOG)
+                        </button>
+                        
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="btn-download-pdf" type="button" class="py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-mono font-bold uppercase tracking-wider text-xs border border-neutral-700 transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-file-pdf"></i> PDF (300DPI)
+                            </button>
+                            <button id="btn-download-png" type="button" class="py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-mono font-bold uppercase tracking-wider text-xs border border-neutral-700 transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-image"></i> PNG (300DPI)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT PREVIEW CANVAS PANEL -->
+            <div class="lg:col-span-7">
+                
+                <!-- STEP 1 PREVIEW: Crop View -->
+                <div id="step-1-preview" class="bg-neutral-950 p-6 border border-neutral-800 space-y-4">
+                    <div class="flex items-center justify-between border-b border-neutral-800 pb-3">
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-crop-simple text-neutral-400"></i> PHOTO CROP CANVAS
+                        </h3>
+                        <span class="text-[11px] font-mono text-neutral-400 bg-neutral-900 px-2 py-0.5 border border-neutral-800" id="crop-aspect-badge">Ratio: 1:1</span>
+                    </div>
+
+                    <div id="cropper-wrapper" class="relative bg-black border border-neutral-800 flex items-center justify-center min-h-[320px] max-h-[460px] overflow-hidden">
+                        <img id="image-to-crop" src="https://placehold.co/600x600/111111/888888?text=Upload+Your+Photo" alt="Target Crop Image" class="max-w-full">
+                    </div>
+
+                    <div class="p-3 bg-neutral-900 border border-neutral-800 flex items-start gap-3">
+                        <i class="fa-solid fa-circle-info text-neutral-300 mt-0.5"></i>
+                        <p class="text-xs font-mono text-neutral-300 leading-relaxed">
+                            <strong>Passport Standard Tip:</strong> Align chin and top of head within crop box lines. Scroll mouse or pinch to zoom photo.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- STEP 2 PREVIEW: Print Layout View -->
+                <div id="step-2-preview" class="hidden bg-neutral-950 p-4 sm:p-8 border border-neutral-800 flex flex-col items-center">
+                    <div class="w-full flex items-center justify-between mb-4 max-w-xl no-print">
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-file-lines text-neutral-400"></i> PRINT SHEET PREVIEW
+                        </h3>
+                        <span id="page-dim-badge" class="text-xs font-mono font-bold uppercase tracking-wider text-black bg-white px-2.5 py-1 border border-white">4 x 6 in</span>
+                    </div>
+
+                    <div id="print-sheet-container" class="print-sheet-wrapper border border-neutral-300 relative overflow-hidden bg-white">
+                        <canvas id="sheet-canvas" class="w-full h-full block"></canvas>
+                    </div>
+
+                    <div class="mt-4 text-center no-print">
+                        <p class="text-[11px] font-mono text-neutral-400">
+                            High-resolution grid scaled to 300 DPI for precision scissor cutting.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Custom Application JS Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
