@@ -5,11 +5,27 @@
 }
 
 body {
-    background-color: #000000;
+    background-color: #09090b;
     color: #f4f4f5;
 }
 
-/* Cropper customization for monochrome aesthetic */
+/* Dark mode inputs, selects, and panels */
+input[type="text"],
+input[type="number"],
+select {
+    background-color: #18181b !important;
+    color: #ffffff !important;
+    border-color: #3f3f46 !important;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus {
+    border-color: #ffffff !important;
+    outline: none !important;
+}
+
+/* Cropper customization for dark monochrome aesthetic */
 .cropper-view-box {
     outline: 2px solid #ffffff !important;
     outline-color: #ffffff !important;
@@ -23,22 +39,22 @@ body {
 }
 .cropper-container {
     max-height: 440px !important;
-    background-color: #111111 !important;
+    background-color: #18181b !important;
 }
 
-/* Custom monochrome scrollbars */
+/* Custom dark scrollbars */
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
 ::-webkit-scrollbar-track {
-    background: #111111;
+    background: #09090b;
 }
 ::-webkit-scrollbar-thumb {
-    background: #444444;
+    background: #3f3f46;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: #777777;
+    background: #71717a;
 }
 
 /* Range input styling */
@@ -49,7 +65,7 @@ input[type="range"] {
 /* Print sheet shadow & container styling */
 .print-sheet-wrapper {
     background-color: #ffffff;
-    box-shadow: 0 0 30px rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
     transition: all 0.2s ease-in-out;
 }
 
