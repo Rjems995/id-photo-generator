@@ -251,6 +251,34 @@
                         </select>
                     </div>
 
+                    <!-- Photo Spacing Controls (Gap & Margins) -->
+                    <div class="space-y-4 bg-neutral-900 p-4 border border-neutral-800">
+                        <div class="flex items-center justify-between border-b border-neutral-800 pb-2">
+                            <label class="text-xs font-mono font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                                <i class="fa-solid fa-arrows-up-down-left-right text-neutral-400"></i> Photo Spacing Controls
+                            </label>
+                            <span class="text-[10px] font-mono text-neutral-400 uppercase">Gap & Margin</span>
+                        </div>
+
+                        <!-- Photo Gap / Spacing Slider -->
+                        <div class="space-y-1.5">
+                            <div class="flex items-center justify-between">
+                                <label class="text-[11px] font-mono text-neutral-300 uppercase font-bold">Space Between Photos:</label>
+                                <span id="gap-display" class="text-xs font-mono text-white font-bold bg-black px-2 py-0.5 border border-neutral-800">2.0 mm (0.08 in)</span>
+                            </div>
+                            <input type="range" id="gap-slider" min="0" max="20" step="0.5" value="2" class="w-full h-1.5 bg-neutral-800 border border-neutral-700 appearance-none cursor-pointer accent-white">
+                        </div>
+
+                        <!-- Outer Sheet Margin Slider -->
+                        <div class="space-y-1.5 pt-2 border-t border-neutral-800">
+                            <div class="flex items-center justify-between">
+                                <label class="text-[11px] font-mono text-neutral-300 uppercase font-bold">Outer Page Margin:</label>
+                                <span id="margin-display" class="text-xs font-mono text-white font-bold bg-black px-2 py-0.5 border border-neutral-800">6.35 mm (0.25 in)</span>
+                            </div>
+                            <input type="range" id="margin-slider" min="0" max="25" step="0.5" value="6.35" class="w-full h-1.5 bg-neutral-800 border border-neutral-700 appearance-none cursor-pointer accent-white">
+                        </div>
+                    </div>
+
                     <!-- Output Actions -->
                     <div class="pt-2 space-y-2">
                         <button id="btn-direct-print" type="button" class="w-full py-3 bg-white hover:bg-neutral-200 text-black font-extrabold uppercase tracking-wider text-xs border border-white shadow-sm transition flex items-center justify-center gap-2">

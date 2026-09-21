@@ -1,563 +1,442 @@
-/* STREAMING_CHUNK:Initializing state variables and presets... */
-// Global Application State Variables
-let cropper = null;
-let currentStep = 1;
-let originalImageSrc = "https://placehold.co/600x600/111111/888888?text=Upload+Your+Photo";
-let croppedImageDataUrl = null;
-let selectedBgColor = "#ffffff";
+/**
+ * Passport & ID Photo Print Generator Engine
+ * Handles image processing, dynamic dynamic multi-size grids, custom spacing, high-res canvas rendering, and exports.
+ */
 
-// Preset Photo Dimensions Dictionary
-const PRESETS = {
-    "2x2": { name: "2x2 Inch", w: 2, h: 2, unit: "in", aspect: 1 },
-    "1x1": { name: "1x1 Inch", w: 1, h: 1, unit: "in", aspect: 1 },
-    "1.5x2": { name: "1.5x2 Inch", w: 1.5, h: 2, unit: "in", aspect: 1.5/2 },
-    "2x3": { name: "2x3 Inch", w: 2, h: 3, unit: "in", aspect: 2/3 },
-    "35x45": { name: "35x45 mm", w: 35, h: 45, unit: "mm", aspect: 35/45 },
-    "30x40": { name: "30x40 mm", w: 30, h: 40, unit: "mm", aspect: 30/40 },
-    "custom": { name: "Custom", w: 2, h: 2, unit: "in", aspect: 1 }
+// Application State
+const state = {
+  rawImage: null,
+  cropper: null,
+  croppedCanvas: null,
+  paper: {
+    type: '4x6',
+    widthInches: 4,
+    heightInches: 6
+  },
+  primaryPhoto: {
+    widthInches: 2,
+    heightInches: 2,
+    quantity: 6,
+    label: '2x2 in'
+  },
+  mixPhotos: {
+    '1x1': 0,
+    '2x2': 0,
+    '1.5x2': 0
+  },
+  guides: 'dashed', // 'none', 'solid', 'dashed'
+  gapInches: 0.1,    // Default ~2.5mm space between photos
+  marginInches: 0.2  // Default ~5mm outer sheet margin
 };
 
-// Paper Dimensions Dictionary in Inches
-const PAPERS = {
-    "4x6": { w: 4, h: 6, name: "4 x 6 in" },
-    "5x7": { w: 5, h: 7, name: "5 x 7 in" },
-    "a4": { w: 8.27, h: 11.69, name: "A4 (8.27 x 11.69 in)" },
-    "letter": { w: 8.5, h: 11, name: "US Letter (8.5 x 11 in)" }
+// Paper Dimensions Map (Inches)
+const PAPER_SIZES = {
+  '4x6': { w: 4, h: 6 },
+  '5x7': { w: 5, h: 7 },
+  'letter': { w: 8.5, h: 11 },
+  'a4': { w: 8.27, h: 11.69 }
 };
 
-// Selected Preset Key & Quantities Counter State
-let selectedPresetKey = "2x2";
-let quantities = {
-    primary: 6,
-    "1x1": 0,
-    "2x2": 0,
-    "1.5x2": 0
+// Preset Photo Sizes (Inches)
+const PHOTO_PRESETS = {
+  '2x2': { w: 2, h: 2, label: '2x2 in (US Passport)' },
+  '1x1': { w: 1, h: 1, label: '1x1 in' },
+  '1.5x2': { w: 1.5, h: 2, label: '1.5x2 in' },
+  '2x3': { w: 2, h: 3, label: '2x3 in' },
+  '35x45mm': { w: 35 / 25.4, h: 45 / 25.4, label: '35x45 mm (EU/UK Passport)' },
+  '30x40mm': { w: 30 / 25.4, h: 40 / 25.4, label: '30x40 mm' }
 };
 
-// DOM Element References
-const imageToCrop = document.getElementById('image-to-crop');
-const imageInput = document.getElementById('image-input');
-const dropZone = document.getElementById('drop-zone');
-const presetSelect = document.getElementById('preset-select');
-const paperSelect = document.getElementById('paper-size-select');
-const sheetCanvas = document.getElementById('sheet-canvas');
-const lineStyleSelect = document.getElementById('line-style-select');
+// DOM Elements
+const DOM = {};
 
-/* STREAMING_CHUNK:Defining notification and cropper functions... */
-// Toast Notification Helpers
-function showToast(text) {
-    const toast = document.getElementById('toast-message');
-    document.getElementById('toast-text').innerHTML = `<i class="fa-solid fa-circle-info text-white"></i> ${text}`;
-    toast.classList.remove('hidden');
-    setTimeout(() => {
-        hideToast();
-    }, 4000);
-}
-
-function hideToast() {
-    document.getElementById('toast-message').classList.add('hidden');
-}
-
-document.getElementById('toast-close-btn').addEventListener('click', hideToast);
-
-// Initialize Cropper.js instance
-function initCropper() {
-    try {
-        if (cropper) {
-            cropper.destroy();
-            cropper = null;
-        }
-        
-        const preset = PRESETS[selectedPresetKey];
-        const aspectRatio = preset.aspect;
-
-        cropper = new Cropper(imageToCrop, {
-            aspectRatio: aspectRatio,
-            viewMode: 1,
-            dragMode: 'move',
-            autoCropArea: 0.85,
-            restore: false,
-            guides: true,
-            center: true,
-            highlight: false,
-            cropBoxMovable: true,
-            cropBoxResizable: true,
-            toggleDragModeOnDblclick: false,
-            ready() {
-                const tools = document.getElementById('cropper-tools');
-                if (tools) tools.classList.remove('opacity-40', 'pointer-events-none');
-            }
-        });
-    } catch (err) {
-        console.error("Cropper Initialization Error:", err);
-        showToast("Failed to initialize photo crop tool.");
-    }
-}
-
-// File Selection & Drag-and-Drop Handling
-dropZone.addEventListener('click', () => imageInput.click());
-
-dropZone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropZone.classList.add('border-white', 'bg-neutral-800');
+document.addEventListener('DOMContentLoaded', () => {
+  cacheDOMElements();
+  attachEventListeners();
+  feather.replace();
 });
 
-dropZone.addEventListener('dragleave', () => {
-    dropZone.classList.remove('border-white', 'bg-neutral-800');
-});
-
-dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('border-white', 'bg-neutral-800');
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-        handleFileSelect(e.dataTransfer.files[0]);
-    }
-});
-
-imageInput.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-        handleFileSelect(e.target.files[0]);
-    }
-});
-
-function handleFileSelect(file) {
-    if (!file || !file.type.startsWith('image/')) {
-        showToast('Please upload a valid image file (JPEG, PNG, or WEBP).');
-        return;
-    }
-    if (file.size > 25 * 1024 * 1024) {
-        showToast('Image file size exceeds 25MB limit.');
-        return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        originalImageSrc = e.target.result;
-        imageToCrop.src = originalImageSrc;
-        initCropper();
-        showToast('Photo loaded successfully. Adjust crop area.');
-    };
-    reader.onerror = () => {
-        showToast('Error reading uploaded image file.');
-    };
-    reader.readAsDataURL(file);
+function cacheDOMElements() {
+  DOM.dropZone = document.getElementById('drop-zone');
+  DOM.fileInput = document.getElementById('file-input');
+  DOM.cropperImg = document.getElementById('cropper-image');
+  DOM.cropperWrapper = document.getElementById('cropper-wrapper');
+  DOM.cropperPlaceholder = document.getElementById('cropper-placeholder');
+  
+  DOM.presetSelect = document.getElementById('preset-select');
+  DOM.customDimensionsGroup = document.getElementById('custom-dimensions-group');
+  DOM.customWidth = document.getElementById('custom-width');
+  DOM.customHeight = document.getElementById('custom-height');
+  DOM.customUnit = document.getElementById('custom-unit');
+  
+  DOM.paperSelect = document.getElementById('paper-select');
+  DOM.primaryQty = document.getElementById('primary-qty');
+  DOM.maxCapacityBtn = document.getElementById('max-capacity-btn');
+  
+  // Spacing Controls
+  DOM.gapInput = document.getElementById('gap-input');
+  DOM.gapValueDisplay = document.getElementById('gap-value-display');
+  DOM.marginInput = document.getElementById('margin-input');
+  DOM.marginValueDisplay = document.getElementById('margin-value-display');
+  
+  DOM.mix1x1 = document.getElementById('mix-1x1');
+  DOM.mix2x2 = document.getElementById('mix-2x2');
+  DOM.mix15x2 = document.getElementById('mix-15x2');
+  DOM.guidesSelect = document.getElementById('guides-select');
+  
+  DOM.btnStep2 = document.getElementById('btn-step-2');
+  DOM.btnBackStep1 = document.getElementById('btn-back-step-1');
+  DOM.step1Panel = document.getElementById('step-1-panel');
+  DOM.step2Panel = document.getElementById('step-2-panel');
+  DOM.step1Preview = document.getElementById('step-1-preview');
+  DOM.step2Preview = document.getElementById('step-2-preview');
+  
+  DOM.badgeDimensions = document.getElementById('badge-dimensions');
+  DOM.badgePaper = document.getElementById('badge-paper');
+  DOM.badgePhotosCount = document.getElementById('badge-photos-count');
+  DOM.sheetCanvas = document.getElementById('sheet-canvas');
+  
+  DOM.btnDownloadPng = document.getElementById('btn-download-png');
+  DOM.btnDownloadPdf = document.getElementById('btn-download-pdf');
+  DOM.btnPrint = document.getElementById('btn-print');
 }
 
-/* STREAMING_CHUNK:Configuring custom dimension and background swatch controls... */
-presetSelect.addEventListener('change', (e) => {
-    selectedPresetKey = e.target.value;
-    const customContainer = document.getElementById('custom-dim-container');
-
-    if (selectedPresetKey === 'custom') {
-        customContainer.classList.remove('hidden');
-        updateCustomPreset();
-    } else {
-        customContainer.classList.add('hidden');
-        updatePrimaryLabel();
-        updateMixerVisibility();
-        if (cropper) {
-            cropper.setAspectRatio(PRESETS[selectedPresetKey].aspect);
-        }
-    }
-    document.getElementById('crop-aspect-badge').innerText = `Ratio: ${PRESETS[selectedPresetKey].w}:${PRESETS[selectedPresetKey].h}`;
-});
-
-function updateCustomPreset() {
-    let w = parseFloat(document.getElementById('custom-width').value) || 1;
-    let h = parseFloat(document.getElementById('custom-height').value) || 1;
-    w = Math.max(0.1, Math.min(20, w));
-    h = Math.max(0.1, Math.min(20, h));
-
-    const unit = document.getElementById('custom-unit').value;
-    PRESETS['custom'].w = w;
-    PRESETS['custom'].h = h;
-    PRESETS['custom'].unit = unit;
-    PRESETS['custom'].aspect = w / h;
-
-    if (cropper) {
-        cropper.setAspectRatio(PRESETS['custom'].aspect);
-    }
-    updatePrimaryLabel();
-}
-
-document.getElementById('custom-width').addEventListener('input', updateCustomPreset);
-document.getElementById('custom-height').addEventListener('input', updateCustomPreset);
-document.getElementById('custom-unit').addEventListener('change', updateCustomPreset);
-
-function updatePrimaryLabel() {
-    const p = PRESETS[selectedPresetKey];
-    document.getElementById('primary-qty-label').innerText = `Primary (${p.w}${p.unit} x ${p.h}${p.unit}):`;
-}
-
-function updateMixerVisibility() {
-    document.getElementById('mixer-1x1-row').classList.toggle('hidden', selectedPresetKey === '1x1');
-    document.getElementById('mixer-2x2-row').classList.toggle('hidden', selectedPresetKey === '2x2');
-    document.getElementById('mixer-1.5x2-row').classList.toggle('hidden', selectedPresetKey === '1.5x2');
-}
-
-// Background Swatches
-document.querySelectorAll('.bg-color-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.bg-color-btn').forEach(b => b.classList.remove('border-2', 'border-white'));
-        const target = e.currentTarget;
-        target.classList.add('border-2', 'border-white');
-        selectedBgColor = target.getAttribute('data-color');
+function attachEventListeners() {
+  // File Upload Handlers
+  DOM.dropZone.addEventListener('click', () => DOM.fileInput.click());
+  DOM.fileInput.addEventListener('change', handleFileSelect);
+  
+  ['dragenter', 'dragover'].forEach(eventName => {
+    DOM.dropZone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      DOM.dropZone.classList.add('border-white');
     });
-});
+  });
 
-document.getElementById('custom-bg-color').addEventListener('input', (e) => {
-    selectedBgColor = e.target.value;
-});
-
-// Cropper Operations
-document.getElementById('btn-rotate-left').addEventListener('click', () => cropper && cropper.rotate(-90));
-document.getElementById('btn-rotate-right').addEventListener('click', () => cropper && cropper.rotate(90));
-let scaleX = 1;
-document.getElementById('btn-flip-h').addEventListener('click', () => {
-    if (!cropper) return;
-    scaleX = -scaleX;
-    cropper.scaleX(scaleX);
-});
-document.getElementById('btn-reset-crop').addEventListener('click', () => cropper && cropper.reset());
-
-/* STREAMING_CHUNK:Setting up layout rendering and step navigation... */
-const step1Panel = document.getElementById('step-1-panel');
-const step2Panel = document.getElementById('step-2-panel');
-const step1Preview = document.getElementById('step-1-preview');
-const step2Preview = document.getElementById('step-2-preview');
-
-document.getElementById('go-to-step-2').addEventListener('click', () => {
-    if (!cropper) {
-        showToast("Please upload a photo first.");
-        return;
-    }
-
-    try {
-        const canvas = cropper.getCroppedCanvas({
-            width: 900, 
-            imageSmoothingEnabled: true,
-            imageSmoothingQuality: 'high'
-        });
-
-        if (!canvas) {
-            showToast("Failed to render crop canvas. Try re-adjusting crop handles.");
-            return;
-        }
-
-        const bgCanvas = document.createElement('canvas');
-        bgCanvas.width = canvas.width;
-        bgCanvas.height = canvas.height;
-        const ctx = bgCanvas.getContext('2d');
-
-        ctx.fillStyle = selectedBgColor;
-        ctx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
-        ctx.drawImage(canvas, 0, 0);
-
-        croppedImageDataUrl = bgCanvas.toDataURL('image/jpeg', 0.95);
-
-        step1Panel.classList.add('hidden');
-        step1Preview.classList.add('hidden');
-        step2Panel.classList.remove('hidden');
-        step2Preview.classList.remove('hidden');
-
-        document.getElementById('step-nav-1').className = "px-3 py-1.5 bg-neutral-900 text-neutral-500 border border-neutral-800 flex items-center gap-2";
-        document.getElementById('step-nav-2').className = "px-3 py-1.5 bg-white text-black font-bold border border-white flex items-center gap-2";
-
-        renderPrintSheet();
-    } catch (err) {
-        console.error("Step 2 navigation error:", err);
-        showToast("An error occurred while generating crop image.");
-    }
-});
-
-document.getElementById('back-to-step-1').addEventListener('click', () => {
-    step2Panel.classList.add('hidden');
-    step2Preview.classList.add('hidden');
-    step1Panel.classList.remove('hidden');
-    step1Preview.classList.remove('hidden');
-
-    document.getElementById('step-nav-1').className = "px-3 py-1.5 bg-white text-black font-bold border border-white flex items-center gap-2";
-    document.getElementById('step-nav-2').className = "px-3 py-1.5 bg-neutral-900 text-neutral-500 border border-neutral-800 flex items-center gap-2";
-});
-
-document.getElementById('reset-btn').addEventListener('click', () => {
-    if (confirm('Are you sure you want to start over and reset all settings?')) {
-        location.reload();
-    }
-});
-
-// Quantity Modification Listeners
-document.querySelectorAll('.qty-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        const target = e.currentTarget.getAttribute('data-target');
-        const change = parseInt(e.currentTarget.getAttribute('data-change'));
-        
-        quantities[target] = Math.max(0, (quantities[target] || 0) + change);
-        
-        const elem = document.getElementById(`qty-${target}-val`);
-        if (elem) elem.innerText = quantities[target];
-        
-        renderPrintSheet();
+  ['dragleave', 'drop'].forEach(eventName => {
+    DOM.dropZone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      DOM.dropZone.classList.remove('border-white');
     });
-});
+  });
 
-paperSelect.addEventListener('change', renderPrintSheet);
-lineStyleSelect.addEventListener('change', renderPrintSheet);
+  DOM.dropZone.addEventListener('drop', (e) => {
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleFile(files[0]);
+  });
 
-// Auto-fill Grid Capacity
-document.getElementById('btn-fill-max').addEventListener('click', () => {
-    const paper = PAPERS[paperSelect.value];
-    const primaryPreset = PRESETS[selectedPresetKey];
+  // Preset & Sizing Handlers
+  DOM.presetSelect.addEventListener('change', handlePresetChange);
+  DOM.customWidth.addEventListener('input', handleCustomSizeChange);
+  DOM.customHeight.addEventListener('input', handleCustomSizeChange);
+  DOM.customUnit.addEventListener('change', handleCustomSizeChange);
 
-    const itemW = toInches(primaryPreset.w, primaryPreset.unit);
-    const itemH = toInches(primaryPreset.h, primaryPreset.unit);
+  // Sheet Controls
+  DOM.paperSelect.addEventListener('change', () => {
+    const val = DOM.paperSelect.value;
+    if (PAPER_SIZES[val]) {
+      state.paper.type = val;
+      state.paper.widthInches = PAPER_SIZES[val].w;
+      state.paper.heightInches = PAPER_SIZES[val].h;
+    }
+    updateMaxCapacity();
+    renderSheet();
+  });
 
-    const margin = 0.25; 
-    const gap = 0.08;    
+  DOM.primaryQty.addEventListener('input', () => {
+    state.primaryPhoto.quantity = parseInt(DOM.primaryQty.value) || 0;
+    renderSheet();
+  });
 
-    const availableW = paper.w - (margin * 2);
-    const availableH = paper.h - (margin * 2);
+  DOM.maxCapacityBtn.addEventListener('click', calculateAndSetMaxCapacity);
 
-    const cols = Math.floor((availableW + gap) / (itemW + gap));
-    const rows = Math.floor((availableH + gap) / (itemH + gap));
+  // Gap & Margin Spacing Listeners
+  DOM.gapInput.addEventListener('input', () => {
+    const mm = parseFloat(DOM.gapInput.value) || 0;
+    state.gapInches = mm / 25.4;
+    DOM.gapValueDisplay.textContent = `${mm.toFixed(1)} mm`;
+    renderSheet();
+  });
 
-    quantities.primary = Math.max(1, cols * rows);
-    quantities['1x1'] = 0;
-    quantities['2x2'] = 0;
-    quantities['1.5x2'] = 0;
+  DOM.marginInput.addEventListener('input', () => {
+    const mm = parseFloat(DOM.marginInput.value) || 0;
+    state.marginInches = mm / 25.4;
+    DOM.marginValueDisplay.textContent = `${mm.toFixed(1)} mm`;
+    renderSheet();
+  });
 
-    document.getElementById('qty-primary-val').innerText = quantities.primary;
-    if (document.getElementById('qty-1x1-val')) document.getElementById('qty-1x1-val').innerText = 0;
-    if (document.getElementById('qty-2x2-val')) document.getElementById('qty-2x2-val').innerText = 0;
-    if (document.getElementById('qty-1.5x2-val')) document.getElementById('qty-1.5x2-val').innerText = 0;
+  // Photo Mix Inputs
+  DOM.mix1x1.addEventListener('input', () => {
+    state.mixPhotos['1x1'] = parseInt(DOM.mix1x1.value) || 0;
+    renderSheet();
+  });
+  DOM.mix2x2.addEventListener('input', () => {
+    state.mixPhotos['2x2'] = parseInt(DOM.mix2x2.value) || 0;
+    renderSheet();
+  });
+  DOM.mix15x2.addEventListener('input', () => {
+    state.mixPhotos['1.5x2'] = parseInt(DOM.mix15x2.value) || 0;
+    renderSheet();
+  });
 
-    renderPrintSheet();
-    showToast(`Auto-filled sheet with ${quantities.primary} photo copies.`);
-});
+  DOM.guidesSelect.addEventListener('change', () => {
+    state.guides = DOM.guidesSelect.value;
+    renderSheet();
+  });
 
-function toInches(val, unit) {
-    return unit === 'mm' ? val / 25.4 : val;
+  // Step Navigation
+  DOM.btnStep2.addEventListener('click', () => {
+    if (!state.cropper) return;
+    state.croppedCanvas = state.cropper.getCroppedCanvas();
+    
+    DOM.step1Panel.classList.add('hidden');
+    DOM.step1Preview.classList.add('hidden');
+    DOM.step2Panel.classList.remove('hidden');
+    DOM.step2Preview.classList.remove('hidden');
+    
+    updateMaxCapacity();
+    renderSheet();
+  });
+
+  DOM.btnBackStep1.addEventListener('click', () => {
+    DOM.step2Panel.classList.add('hidden');
+    DOM.step2Preview.classList.add('hidden');
+    DOM.step1Panel.classList.remove('hidden');
+    DOM.step1Preview.classList.remove('hidden');
+  });
+
+  // Export Buttons
+  DOM.btnDownloadPng.addEventListener('click', () => downloadImage('png'));
+  DOM.btnDownloadPdf.addEventListener('click', downloadPDF);
+  DOM.btnPrint.addEventListener('click', () => window.print());
 }
 
-/* STREAMING_CHUNK:Building live preview grid and high-res export functions... */
-// Render Live Preview
-function renderPrintSheet() {
-    if (!croppedImageDataUrl) return;
-
-    const paperKey = paperSelect.value;
-    const paper = PAPERS[paperKey];
-    const lineStyle = lineStyleSelect.value;
-
-    document.getElementById('page-dim-badge').innerText = paper.name;
-
-    const previewDPI = 150; 
-    const canvasWidth = Math.round(paper.w * previewDPI);
-    const canvasHeight = Math.round(paper.h * previewDPI);
-
-    sheetCanvas.width = canvasWidth;
-    sheetCanvas.height = canvasHeight;
-
-    const container = document.getElementById('print-sheet-container');
-    const maxPreviewWidth = 460;
-    const containerWidth = Math.min(window.innerWidth - 60, maxPreviewWidth);
-    const containerHeight = Math.round(containerWidth * (paper.h / paper.w));
-
-    container.style.width = `${containerWidth}px`;
-    container.style.height = `${containerHeight}px`;
-
-    const ctx = sheetCanvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-    const img = new Image();
-    img.onload = () => {
-        let itemsToPlace = [];
-
-        const pPreset = PRESETS[selectedPresetKey];
-        const pW_in = toInches(pPreset.w, pPreset.unit);
-        const pH_in = toInches(pPreset.h, pPreset.unit);
-
-        for (let i = 0; i < quantities.primary; i++) {
-            itemsToPlace.push({ w: pW_in, h: pH_in });
-        }
-
-        if (selectedPresetKey !== '1x1') {
-            for (let i = 0; i < quantities['1x1']; i++) itemsToPlace.push({ w: 1, h: 1 });
-        }
-        if (selectedPresetKey !== '2x2') {
-            for (let i = 0; i < quantities['2x2']; i++) itemsToPlace.push({ w: 2, h: 2 });
-        }
-        if (selectedPresetKey !== '1.5x2') {
-            for (let i = 0; i < quantities['1.5x2']; i++) itemsToPlace.push({ w: 1.5, h: 2 });
-        }
-
-        const margin = Math.round(0.25 * previewDPI);
-        const gap = Math.round(0.08 * previewDPI);
-
-        let currX = margin;
-        let currY = margin;
-        let rowMaxH = 0;
-
-        itemsToPlace.forEach((item) => {
-            const itemW_px = Math.round(item.w * previewDPI);
-            const itemH_px = Math.round(item.h * previewDPI);
-
-            if (currX + itemW_px > canvasWidth - margin) {
-                currX = margin;
-                currY += rowMaxH + gap;
-                rowMaxH = 0;
-            }
-
-            if (currY + itemH_px <= canvasHeight - margin) {
-                ctx.drawImage(img, currX, currY, itemW_px, itemH_px);
-
-                if (lineStyle !== 'none') {
-                    ctx.strokeStyle = '#222222';
-                    ctx.lineWidth = 1;
-                    
-                    if (lineStyle === 'dashed') {
-                        ctx.setLineDash([4, 4]);
-                    } else {
-                        ctx.setLineDash([]);
-                    }
-
-                    ctx.strokeRect(currX, currY, itemW_px, itemH_px);
-                    ctx.setLineDash([]);
-                }
-
-                currX += itemW_px + gap;
-                if (itemH_px > rowMaxH) rowMaxH = itemH_px;
-            }
-        });
-    };
-    img.src = croppedImageDataUrl;
+function handleFileSelect(e) {
+  if (e.target.files && e.target.files[0]) {
+    handleFile(e.target.files[0]);
+  }
 }
 
-// Generate High-Resolution 300DPI Canvas
-async function buildHighResCanvas() {
-    const paperKey = paperSelect.value;
-    const paper = PAPERS[paperKey];
-    const lineStyle = lineStyleSelect.value;
+function handleFile(file) {
+  if (!file.type.match(/^image\/(jpeg|png|webp)$/)) {
+    alert('Please upload a valid JPG, PNG, or WEBP photo.');
+    return;
+  }
 
-    const printDPI = 300;
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(paper.w * printDPI);
-    canvas.height = Math.round(paper.h * printDPI);
-    const ctx = canvas.getContext('2d');
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    DOM.cropperImg.src = e.target.result;
+    DOM.cropperPlaceholder.classList.add('hidden');
+    DOM.cropperWrapper.classList.remove('hidden');
+    DOM.btnStep2.disabled = false;
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (state.cropper) state.cropper.destroy();
 
-    const img = new Image();
-    img.src = croppedImageDataUrl;
-    await new Promise((resolve) => { img.onload = resolve; });
-
-    let itemsToPlace = [];
-    const pPreset = PRESETS[selectedPresetKey];
-    const pW_in = toInches(pPreset.w, pPreset.unit);
-    const pH_in = toInches(pPreset.h, pPreset.unit);
-
-    for (let i = 0; i < quantities.primary; i++) itemsToPlace.push({ w: pW_in, h: pH_in });
-    if (selectedPresetKey !== '1x1') {
-        for (let i = 0; i < quantities['1x1']; i++) itemsToPlace.push({ w: 1, h: 1 });
-    }
-    if (selectedPresetKey !== '2x2') {
-        for (let i = 0; i < quantities['2x2']; i++) itemsToPlace.push({ w: 2, h: 2 });
-    }
-    if (selectedPresetKey !== '1.5x2') {
-        for (let i = 0; i < quantities['1.5x2']; i++) itemsToPlace.push({ w: 1.5, h: 2 });
-    }
-
-    const margin = Math.round(0.25 * printDPI);
-    const gap = Math.round(0.08 * printDPI);
-    let currX = margin;
-    let currY = margin;
-    let rowMaxH = 0;
-
-    itemsToPlace.forEach((item) => {
-        const itemW_px = Math.round(item.w * printDPI);
-        const itemH_px = Math.round(item.h * printDPI);
-
-        if (currX + itemW_px > canvas.width - margin) {
-            currX = margin;
-            currY += rowMaxH + gap;
-            rowMaxH = 0;
-        }
-
-        if (currY + itemH_px <= canvas.height - margin) {
-            ctx.drawImage(img, currX, currY, itemW_px, itemH_px);
-
-            if (lineStyle !== 'none') {
-                ctx.strokeStyle = '#000000';
-                ctx.lineWidth = 2;
-                if (lineStyle === 'dashed') ctx.setLineDash([8, 8]);
-                ctx.strokeRect(currX, currY, itemW_px, itemH_px);
-                ctx.setLineDash([]);
-            }
-
-            currX += itemW_px + gap;
-            if (itemH_px > rowMaxH) rowMaxH = itemH_px;
-        }
+    const aspectRatio = state.primaryPhoto.widthInches / state.primaryPhoto.heightInches;
+    state.cropper = new Cropper(DOM.cropperImg, {
+      aspectRatio: aspectRatio,
+      viewMode: 1,
+      background: false,
+      autoCropArea: 0.9,
+      responsive: true
     });
-
-    return canvas;
+  };
+  reader.readAsDataURL(file);
 }
 
-// Direct Print Handler
-document.getElementById('btn-direct-print').addEventListener('click', () => {
-    if (!croppedImageDataUrl) return;
-    window.print();
-});
+function handlePresetChange() {
+  const selected = DOM.presetSelect.value;
+  if (selected === 'custom') {
+    DOM.customDimensionsGroup.classList.remove('hidden');
+    handleCustomSizeChange();
+  } else {
+    DOM.customDimensionsGroup.classList.add('hidden');
+    const preset = PHOTO_PRESETS[selected];
+    if (preset) {
+      state.primaryPhoto.widthInches = preset.w;
+      state.primaryPhoto.heightInches = preset.h;
+      state.primaryPhoto.label = preset.label;
+      updateCropperAspectRatio();
+    }
+  }
+}
 
-// PDF Export Handler
-document.getElementById('btn-download-pdf').addEventListener('click', async () => {
-    if (!croppedImageDataUrl) return;
+function handleCustomSizeChange() {
+  const w = parseFloat(DOM.customWidth.value) || 1;
+  const h = parseFloat(DOM.customHeight.value) || 1;
+  const unit = DOM.customUnit.value;
 
-    try {
-        const { jsPDF } = window.jspdf;
-        const paperKey = paperSelect.value;
-        const paper = PAPERS[paperKey];
+  const toInches = unit === 'mm' ? (1 / 25.4) : 1;
+  state.primaryPhoto.widthInches = w * toInches;
+  state.primaryPhoto.heightInches = h * toInches;
+  state.primaryPhoto.label = `Custom (${w}${unit} x ${h}${unit})`;
 
-        const printCanvas = await buildHighResCanvas();
+  updateCropperAspectRatio();
+}
 
-        const pdf = new jsPDF({
-            orientation: paper.h > paper.w ? 'portrait' : 'landscape',
-            unit: 'in',
-            format: paperKey === 'a4' ? 'a4' : [paper.w, paper.h]
+function updateCropperAspectRatio() {
+  if (state.cropper) {
+    state.cropper.setAspectRatio(
+      state.primaryPhoto.widthInches / state.primaryPhoto.heightInches
+    );
+  }
+}
+
+function calculateMaxFit(photoW, photoH, paperW, paperH, gap, margin) {
+  const availW = paperW - (2 * margin);
+  const availH = paperH - (2 * margin);
+
+  if (availW <= 0 || availH <= 0) return 0;
+
+  const cols = Math.floor((availW + gap) / (photoW + gap));
+  const rows = Math.floor((availH + gap) / (photoH + gap));
+
+  return Math.max(0, cols * rows);
+}
+
+function updateMaxCapacity() {
+  const max = calculateMaxFit(
+    state.primaryPhoto.widthInches,
+    state.primaryPhoto.heightInches,
+    state.paper.widthInches,
+    state.paper.heightInches,
+    state.gapInches,
+    state.marginInches
+  );
+  if (max > 0) {
+    state.primaryPhoto.quantity = max;
+    DOM.primaryQty.value = max;
+  }
+}
+
+function calculateAndSetMaxCapacity() {
+  updateMaxCapacity();
+  renderSheet();
+}
+
+function renderSheet() {
+  if (!state.croppedCanvas) return;
+
+  const DPI = 300;
+  const canvas = DOM.sheetCanvas;
+  const ctx = canvas.getContext('2d');
+
+  const canvasWidth = Math.round(state.paper.widthInches * DPI);
+  const canvasHeight = Math.round(state.paper.heightInches * DPI);
+
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+
+  // Pure White Background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  // Calculate items queue
+  const items = [];
+
+  // 1. Primary crop photos
+  for (let i = 0; i < state.primaryPhoto.quantity; i++) {
+    items.push({
+      w: state.primaryPhoto.widthInches * DPI,
+      h: state.primaryPhoto.heightInches * DPI,
+      canvas: state.croppedCanvas
+    });
+  }
+
+  // 2. Additional mix photos
+  const mixPresets = {
+    '1x1': { w: 1 * DPI, h: 1 * DPI },
+    '2x2': { w: 2 * DPI, h: 2 * DPI },
+    '1.5x2': { w: 1.5 * DPI, h: 2 * DPI }
+  };
+
+  Object.keys(state.mixPhotos).forEach(key => {
+    const qty = state.mixPhotos[key];
+    const dim = mixPresets[key];
+    if (qty > 0 && dim) {
+      for (let i = 0; i < qty; i++) {
+        items.push({
+          w: dim.w,
+          h: dim.h,
+          canvas: createResizedPhotoCanvas(state.croppedCanvas, dim.w, dim.h)
         });
-
-        const printDataUrl = printCanvas.toDataURL('image/jpeg', 0.98);
-        pdf.addImage(printDataUrl, 'JPEG', 0, 0, paper.w, paper.h);
-        pdf.save(`ID_Photos_${paperKey}_${Date.now()}.pdf`);
-        showToast("PDF document downloaded.");
-    } catch (err) {
-        console.error("PDF Export Error:", err);
-        showToast("Failed to generate PDF file.");
+      }
     }
-});
+  });
 
-// PNG Export Handler
-document.getElementById('btn-download-png').addEventListener('click', async () => {
-    if (!croppedImageDataUrl) return;
+  // Lay out photos using current gap and margins
+  const marginPx = state.marginInches * DPI;
+  const gapPx = state.gapInches * DPI;
 
-    try {
-        const paperKey = paperSelect.value;
-        const printCanvas = await buildHighResCanvas();
+  let currentX = marginPx;
+  let currentY = marginPx;
+  let rowMaxHeight = 0;
+  let totalRendered = 0;
 
-        const link = document.createElement('a');
-        link.download = `ID_Photos_${paperKey}_${Date.now()}.png`;
-        link.href = printCanvas.toDataURL('image/png');
-        link.click();
-        showToast("PNG image downloaded.");
-    } catch (err) {
-        console.error("PNG Export Error:", err);
-        showToast("Failed to save PNG image.");
+  for (const item of items) {
+    if (currentX + item.w > canvasWidth - marginPx) {
+      currentX = marginPx;
+      currentY += rowMaxHeight + gapPx;
+      rowMaxHeight = 0;
     }
-});
 
-// App Entry Initialization
-window.addEventListener('load', () => {
-    initCropper();
-    updatePrimaryLabel();
-    updateMixerVisibility();
-});
+    if (currentY + item.h > canvasHeight - marginPx) {
+      break; // Page full
+    }
+
+    ctx.drawImage(item.canvas, currentX, currentY, item.w, item.h);
+
+    if (state.guides !== 'none') {
+      ctx.save();
+      ctx.strokeStyle = '#888888';
+      ctx.lineWidth = 1.5;
+      if (state.guides === 'dashed') {
+        ctx.setLineDash([8, 8]);
+      } else {
+        ctx.setLineDash([]);
+      }
+      ctx.strokeRect(currentX, currentY, item.w, item.h);
+      ctx.restore();
+    }
+
+    currentX += item.w + gapPx;
+    if (item.h > rowMaxHeight) rowMaxHeight = item.h;
+    totalRendered++;
+  }
+
+  // Update Badges
+  DOM.badgeDimensions.textContent = state.primaryPhoto.label;
+  DOM.badgePaper.textContent = `${state.paper.type.toUpperCase()} (${state.paper.widthInches}" × ${state.paper.heightInches}")`;
+  DOM.badgePhotosCount.textContent = `${totalRendered} Photo${totalRendered === 1 ? '' : 's'}`;
+}
+
+function createResizedPhotoCanvas(originalCanvas, targetW, targetH) {
+  const offscreen = document.createElement('canvas');
+  offscreen.width = targetW;
+  offscreen.height = targetH;
+  const ctx = offscreen.getContext('2d');
+  ctx.drawImage(originalCanvas, 0, 0, targetW, targetH);
+  return offscreen;
+}
+
+function downloadImage(format) {
+  const link = document.createElement('a');
+  link.download = `photo-id-sheet-${state.paper.type}.${format}`;
+  link.href = DOM.sheetCanvas.toDataURL(`image/${format === 'png' ? 'png' : 'jpeg'}`, 0.95);
+  link.click();
+}
+
+function downloadPDF() {
+  const { jsPDF } = window.jspdf;
+  const orientation = state.paper.widthInches > state.paper.heightInches ? 'landscape' : 'portrait';
+  
+  const doc = new jsPDF({
+    orientation: orientation,
+    unit: 'in',
+    format: [state.paper.widthInches, state.paper.heightInches]
+  });
+
+  const imgData = DOM.sheetCanvas.toDataURL('image/jpeg', 0.98);
+  doc.addImage(imgData, 'JPEG', 0, 0, state.paper.widthInches, state.paper.heightInches);
+  doc.save(`photo-id-sheet-${state.paper.type}.pdf`);
+}
