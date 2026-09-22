@@ -1,6 +1,7 @@
 /**
  * Passport & ID Photo Print Generator Engine
- * Handles image processing, dynamic dynamic multi-size grids, custom spacing, high-res canvas rendering, and exports.
+ * Handles cropping, multi-layout algorithms (top-to-bottom 1x1 + 2x2 side columns), 
+ * custom gaps/margins, high-res 300 DPI canvas rendering, and PDF exports.
  */
 
 // Application State
@@ -8,6 +9,7 @@ const state = {
   rawImage: null,
   cropper: null,
   croppedCanvas: null,
+  layoutMode: 'auto', // 'auto', 'side-column-1x1-2x2', 'split-50-50', 'top-row-1x1'
   paper: {
     type: '4x6',
     widthInches: 4,
@@ -69,9 +71,12 @@ function cacheDOMElements() {
   DOM.customHeight = document.getElementById('custom-height');
   DOM.customUnit = document.getElementById('custom-unit');
   
+  DOM.layoutModeSelect = document.getElementById('layout-mode-select');
   DOM.paperSelect = document.getElementById('paper-select');
+  DOM.primaryQtyContainer = document.getElementById('primary-qty-container');
   DOM.primaryQty = document.getElementById('primary-qty');
   DOM.maxCapacityBtn = document.getElementById('max-capacity-btn');
+  DOM.mixSizesContainer = document.getElementById('mix-sizes-container');
   
   // Spacing Controls
   DOM.gapInput = document.getElementById('gap-input');
@@ -91,7 +96,7 @@ function cacheDOMElements() {
   DOM.step1Preview = document.getElementById('step-1-preview');
   DOM.step2Preview = document.getElementById('step-2-preview');
   
-  DOM.badgeDimensions = document.getElementById('badge-dimensions');
+  DOM.badgeLayout = document.getElementById('badge-layout');
   DOM.badgePaper = document.getElementById('badge-paper');
   DOM.badgePhotosCount = document.getElementById('badge-photos-count');
   DOM.sheetCanvas = document.getElementById('sheet-canvas');
@@ -131,6 +136,19 @@ function attachEventListeners() {
   DOM.customHeight.addEventListener('input', handleCustomSizeChange);
   DOM.customUnit.addEventListener('change', handleCustomSizeChange);
 
+  // Layout Mode Selector
+  DOM.layoutModeSelect.addEventListener('change', () => {
+    state.layoutMode = DOM.layoutModeSelect.value;
+    if (state.layoutMode === 'auto') {
+      DOM.primaryQtyContainer.classList.remove('hidden');
+      DOM.mixSizesContainer.classList.remove('hidden');
+    } else {
+      DOM.primaryQtyContainer.classList.add('hidden');
+      DOM.mixSizesContainer.classList.add('hidden');
+    }
+    renderSheet();
+  });
+
   // Sheet Controls
   DOM.paperSelect.addEventListener('change', () => {
     const val = DOM.paperSelect.value;
@@ -139,7 +157,9 @@ function attachEventListeners() {
       state.paper.widthInches = PAPER_SIZES[val].w;
       state.paper.heightInches = PAPER_SIZES[val].h;
     }
-    updateMaxCapacity();
+    if (state.layoutMode === 'auto') {
+      updateMaxCapacity();
+    }
     renderSheet();
   });
 
@@ -194,7 +214,9 @@ function attachEventListeners() {
     DOM.step2Panel.classList.remove('hidden');
     DOM.step2Preview.classList.remove('hidden');
     
-    updateMaxCapacity();
+    if (state.layoutMode === 'auto') {
+      updateMaxCapacity();
+    }
     renderSheet();
   });
 
@@ -314,6 +336,23 @@ function calculateAndSetMaxCapacity() {
   renderSheet();
 }
 
+function drawPhotoWithGuide(ctx, canvasObj, x, y, w, h) {
+  ctx.drawImage(canvasObj, x, y, w, h);
+
+  if (state.guides !== 'none') {
+    ctx.save();
+    ctx.strokeStyle = '#888888';
+    ctx.lineWidth = 1.5;
+    if (state.guides === 'dashed') {
+      ctx.setLineDash([8, 8]);
+    } else {
+      ctx.setLineDash([]);
+    }
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+  }
+}
+
 function renderSheet() {
   if (!state.croppedCanvas) return;
 
@@ -327,14 +366,161 @@ function renderSheet() {
   canvas.width = canvasWidth;
   canvas.height = canvasHeight;
 
-  // Pure White Background
+  // Pure White Sheet Background
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-  // Calculate items queue
+  const marginPx = state.marginInches * DPI;
+  const gapPx = state.gapInches * DPI;
+  let totalRendered = 0;
+
+  // Render based on selected layout mode
+  if (state.layoutMode === 'side-column-1x1-2x2') {
+    totalRendered = renderTopToBottom1x1With2x2(ctx, canvasWidth, canvasHeight, marginPx, gapPx, DPI);
+  } else if (state.layoutMode === 'split-50-50') {
+    totalRendered = renderSplitColumns1x1and2x2(ctx, canvasWidth, canvasHeight, marginPx, gapPx, DPI);
+  } else if (state.layoutMode === 'top-row-1x1') {
+    totalRendered = renderTopRow1x1With2x2Below(ctx, canvasWidth, canvasHeight, marginPx, gapPx, DPI);
+  } else {
+    // Default Auto Grid
+    totalRendered = renderAutoPackedGrid(ctx, canvasWidth, canvasHeight, marginPx, gapPx, DPI);
+  }
+
+  // Update Status Badges
+  DOM.badgeLayout.textContent = DOM.layoutModeSelect.options[DOM.layoutModeSelect.selectedIndex].text;
+  DOM.badgePaper.textContent = `${state.paper.type.toUpperCase()} (${state.paper.widthInches}" × ${state.paper.heightInches}")`;
+  DOM.badgePhotosCount.textContent = `${totalRendered} Photo${totalRendered === 1 ? '' : 's'}`;
+}
+
+// Layout Mode 1: Top-to-Bottom 1x1 Column on Left + 2x2 Photos on Right
+function renderTopToBottom1x1With2x2(ctx, canvasWidth, canvasHeight, marginPx, gapPx, DPI) {
+  const w1 = 1 * DPI;
+  const h1 = 1 * DPI;
+  const w2 = 2 * DPI;
+  const h2 = 2 * DPI;
+
+  const canvas1x1 = createResizedPhotoCanvas(state.croppedCanvas, w1, h1);
+  const canvas2x2 = createResizedPhotoCanvas(state.croppedCanvas, w2, h2);
+
+  let rendered = 0;
+
+  // Left Column of 1x1 Photos (Top to Bottom)
+  const x1 = marginPx;
+  let y1 = marginPx;
+
+  while (y1 + h1 <= canvasHeight - marginPx) {
+    drawPhotoWithGuide(ctx, canvas1x1, x1, y1, w1, h1);
+    y1 += h1 + gapPx;
+    rendered++;
+  }
+
+  // Right Side 2x2 Photos arranged in grid
+  const startX2 = marginPx + w1 + gapPx;
+  let currentX = startX2;
+  let currentY = marginPx;
+  let rowMaxH = 0;
+
+  while (currentY + h2 <= canvasHeight - marginPx) {
+    while (currentX + w2 <= canvasWidth - marginPx) {
+      drawPhotoWithGuide(ctx, canvas2x2, currentX, currentY, w2, h2);
+      currentX += w2 + gapPx;
+      rowMaxH = h2;
+      rendered++;
+    }
+    currentX = startX2;
+    currentY += rowMaxH + gapPx;
+  }
+
+  return rendered;
+}
+
+// Layout Mode 2: Split Columns (1x1 Left Stack, 2x2 Right Stack)
+function renderSplitColumns1x1and2x2(ctx, canvasWidth, canvasHeight, marginPx, gapPx, DPI) {
+  const w1 = 1 * DPI;
+  const h1 = 1 * DPI;
+  const w2 = 2 * DPI;
+  const h2 = 2 * DPI;
+
+  const canvas1x1 = createResizedPhotoCanvas(state.croppedCanvas, w1, h1);
+  const canvas2x2 = createResizedPhotoCanvas(state.croppedCanvas, w2, h2);
+
+  let rendered = 0;
+
+  // 1x1 Photos filling left side columns
+  let x1 = marginPx;
+  let y1 = marginPx;
+  const midX = canvasWidth / 2;
+
+  while (x1 + w1 <= midX - (gapPx / 2)) {
+    y1 = marginPx;
+    while (y1 + h1 <= canvasHeight - marginPx) {
+      drawPhotoWithGuide(ctx, canvas1x1, x1, y1, w1, h1);
+      y1 += h1 + gapPx;
+      rendered++;
+    }
+    x1 += w1 + gapPx;
+  }
+
+  // 2x2 Photos filling right side columns
+  let x2 = midX + (gapPx / 2);
+  let y2 = marginPx;
+
+  while (x2 + w2 <= canvasWidth - marginPx) {
+    y2 = marginPx;
+    while (y2 + h2 <= canvasHeight - marginPx) {
+      drawPhotoWithGuide(ctx, canvas2x2, x2, y2, w2, h2);
+      y2 += h2 + gapPx;
+      rendered++;
+    }
+    x2 += w2 + gapPx;
+  }
+
+  return rendered;
+}
+
+// Layout Mode 3: Top Row 1x1 + 2x2 Photos Below
+function renderTopRow1x1With2x2Below(ctx, canvasWidth, canvasHeight, marginPx, gapPx, DPI) {
+  const w1 = 1 * DPI;
+  const h1 = 1 * DPI;
+  const w2 = 2 * DPI;
+  const h2 = 2 * DPI;
+
+  const canvas1x1 = createResizedPhotoCanvas(state.croppedCanvas, w1, h1);
+  const canvas2x2 = createResizedPhotoCanvas(state.croppedCanvas, w2, h2);
+
+  let rendered = 0;
+
+  // Top row of 1x1 photos across full width
+  let x1 = marginPx;
+  const y1 = marginPx;
+
+  while (x1 + w1 <= canvasWidth - marginPx) {
+    drawPhotoWithGuide(ctx, canvas1x1, x1, y1, w1, h1);
+    x1 += w1 + gapPx;
+    rendered++;
+  }
+
+  // 2x2 photos underneath the top row
+  let x2 = marginPx;
+  let y2 = marginPx + h1 + gapPx;
+
+  while (y2 + h2 <= canvasHeight - marginPx) {
+    while (x2 + w2 <= canvasWidth - marginPx) {
+      drawPhotoWithGuide(ctx, canvas2x2, x2, y2, w2, h2);
+      x2 += w2 + gapPx;
+      rendered++;
+    }
+    x2 = marginPx;
+    y2 += h2 + gapPx;
+  }
+
+  return rendered;
+}
+
+// Default Auto Packed Grid Mode
+function renderAutoPackedGrid(ctx, canvasWidth, canvasHeight, marginPx, gapPx, DPI) {
   const items = [];
 
-  // 1. Primary crop photos
   for (let i = 0; i < state.primaryPhoto.quantity; i++) {
     items.push({
       w: state.primaryPhoto.widthInches * DPI,
@@ -343,7 +529,6 @@ function renderSheet() {
     });
   }
 
-  // 2. Additional mix photos
   const mixPresets = {
     '1x1': { w: 1 * DPI, h: 1 * DPI },
     '2x2': { w: 2 * DPI, h: 2 * DPI },
@@ -364,10 +549,6 @@ function renderSheet() {
     }
   });
 
-  // Lay out photos using current gap and margins
-  const marginPx = state.marginInches * DPI;
-  const gapPx = state.gapInches * DPI;
-
   let currentX = marginPx;
   let currentY = marginPx;
   let rowMaxHeight = 0;
@@ -381,33 +562,17 @@ function renderSheet() {
     }
 
     if (currentY + item.h > canvasHeight - marginPx) {
-      break; // Page full
+      break;
     }
 
-    ctx.drawImage(item.canvas, currentX, currentY, item.w, item.h);
-
-    if (state.guides !== 'none') {
-      ctx.save();
-      ctx.strokeStyle = '#888888';
-      ctx.lineWidth = 1.5;
-      if (state.guides === 'dashed') {
-        ctx.setLineDash([8, 8]);
-      } else {
-        ctx.setLineDash([]);
-      }
-      ctx.strokeRect(currentX, currentY, item.w, item.h);
-      ctx.restore();
-    }
+    drawPhotoWithGuide(ctx, item.canvas, currentX, currentY, item.w, item.h);
 
     currentX += item.w + gapPx;
     if (item.h > rowMaxHeight) rowMaxHeight = item.h;
     totalRendered++;
   }
 
-  // Update Badges
-  DOM.badgeDimensions.textContent = state.primaryPhoto.label;
-  DOM.badgePaper.textContent = `${state.paper.type.toUpperCase()} (${state.paper.widthInches}" × ${state.paper.heightInches}")`;
-  DOM.badgePhotosCount.textContent = `${totalRendered} Photo${totalRendered === 1 ? '' : 's'}`;
+  return totalRendered;
 }
 
 function createResizedPhotoCanvas(originalCanvas, targetW, targetH) {
