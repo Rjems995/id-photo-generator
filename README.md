@@ -1,3 +1,4 @@
+Markdown
 # IDPRINT.STUDIO - Photo ID & Passport Print Sheet Builder
 
 A lightweight, privacy-focused client-side web application designed to arrange, crop, and layout passport photos (1x1, 2x2, 35x45mm, and custom sizes) onto printable photo sheets (4x6, 5x7, US Letter, A4) with high-resolution 300 DPI exports.
